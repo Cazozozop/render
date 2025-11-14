@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Générateur de Monde Minecraft</title>
+    <title>Générateur de Monde Bloxd.io</title>
     <style>
         * {
             margin: 0;
@@ -103,6 +103,8 @@
             background: #1a1a1a;
             cursor: grab;
             touch-action: none;
+            width: 100%;
+            height: 600px;
         }
         #canvas-container:active {
             cursor: grabbing;
@@ -111,6 +113,9 @@
             display: block;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
         .stats {
             margin-top: 20px;
@@ -152,7 +157,7 @@
 </head>
 <body>
     <div id="setup" class="container">
-        <h1>🌍 Générateur de Monde</h1>
+        <h1>🌍 Générateur de Monde Bloxd.io</h1>
         <div class="input-group">
             <label for="chunksX">Nombre de chunks (X):</label>
             <input type="number" id="chunksX" min="1" max="50" value="10">
@@ -174,8 +179,8 @@
                 <input type="range" id="layerSlider" min="-100" max="40" value="0" step="1">
             </div>
             <div class="control-group">
-                <label for="zoomSlider">Zoom: <span id="zoomValue">1.0x</span></label>
-                <input type="range" id="zoomSlider" min="0.5" max="4" value="1" step="0.1">
+                <label for="zoomSlider">Zoom: <span id="zoomValue">2.0x</span></label>
+                <input type="range" id="zoomSlider" min="0.5" max="8" value="2" step="0.5">
             </div>
         </div>
         <div id="canvas-container">
@@ -238,7 +243,7 @@
         let worldSizeY = 141;
         let canvas, ctx;
         let currentLayer = 0;
-        let zoom = 1;
+        let zoom = 2;
         let offsetX = 0;
         let offsetY = 0;
         let isDragging = false;
@@ -246,6 +251,7 @@
         let lastY = 0;
         let oreCount = {};
         let textures = {};
+        let container;
 
         function loadTextures() {
             return new Promise((resolve) => {
@@ -257,7 +263,6 @@
                     if (loaded === total) resolve();
                 };
 
-                // Charger les textures de minerais
                 for (let oreName in ORE_CONFIG) {
                     const img = new Image();
                     img.crossOrigin = "anonymous";
@@ -271,7 +276,6 @@
                     textures[oreName] = img;
                 }
 
-                // Texture pierre
                 const stone = new Image();
                 stone.crossOrigin = "anonymous";
                 stone.src = "https://raw.githubusercontent.com/Cazozozop/render/main/Stone_1080x1080.png";
@@ -279,7 +283,6 @@
                 stone.onerror = checkComplete;
                 textures['Stone'] = stone;
 
-                // Texture bedrock
                 const bedrock = new Image();
                 bedrock.crossOrigin = "anonymous";
                 bedrock.src = "https://raw.githubusercontent.com/Cazozozop/render/main/Bedrock_1080x1080.png";
@@ -321,7 +324,7 @@
                 }
             }
 
-            // Générer les minerais
+            // Générer les minerais avec moins de densité
             for (let oreName in ORE_CONFIG) {
                 const config = ORE_CONFIG[oreName];
                 generateOreDeposits(oreName, config);
@@ -336,59 +339,66 @@
         }
 
         function generateOreDeposits(oreName, config) {
-            const depositPoints = [];
+            const placedDeposits = [];
 
+            // Parcourir chaque couche Y
             for (let y = config.minY; y <= config.maxY; y++) {
-                for (let x = 0; x < worldSizeX; x += config.minDistBetweenDeposits) {
-                    if (Math.random() < config.spawnChance) {
-                        const offsetX = Math.floor(Math.random() * config.minDistBetweenDeposits);
-                        depositPoints.push({x: x + offsetX, y: y});
+                // Créer des points de dépôt espacés
+                for (let x = 0; x < worldSizeX; x++) {
+                    // Vérifier la distance minimale avec les dépôts existants
+                    let tooClose = false;
+                    for (let deposit of placedDeposits) {
+                        const dist = Math.sqrt(Math.pow(deposit.x - x, 2) + Math.pow(deposit.y - y, 2));
+                        if (dist < config.minDistBetweenDeposits) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+
+                    if (!tooClose && Math.random() < config.spawnChance * 0.01) {
+                        placedDeposits.push({x, y});
+                        placeOreVein(oreName, x, y, config.radius);
                     }
                 }
             }
+        }
 
-            // Placer les minerais autour de chaque point
-            depositPoints.forEach(point => {
-                for (let dy = -config.radius; dy <= config.radius; dy++) {
-                    for (let dx = -config.radius; dx <= config.radius; dx++) {
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist <= config.radius && Math.random() < 0.7) {
-                            const nx = point.x + dx;
-                            const ny = point.y + dy;
-                            const key = `${nx},${ny}`;
-                            if (world[key] === 'Stone' && nx >= 0 && nx < worldSizeX) {
-                                world[key] = oreName;
-                                oreCount[oreName]++;
-                            }
-                        }
-                    }
+        function placeOreVein(oreName, centerX, centerY, radius) {
+            const veinSize = Math.floor(radius * radius * Math.PI * 0.6);
+            
+            for (let i = 0; i < veinSize; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * radius;
+                const dx = Math.round(Math.cos(angle) * dist);
+                const dy = Math.round(Math.sin(angle) * dist);
+                
+                const nx = centerX + dx;
+                const ny = centerY + dy;
+                const key = `${nx},${ny}`;
+                
+                if (world[key] === 'Stone' && nx >= 0 && nx < worldSizeX) {
+                    world[key] = oreName;
+                    oreCount[oreName]++;
                 }
-            });
+            }
         }
 
         function setupCanvas() {
             canvas = document.getElementById('worldCanvas');
             ctx = canvas.getContext('2d');
+            container = document.getElementById('canvas-container');
             
-            const container = document.getElementById('canvas-container');
-            canvas.width = worldSizeX * BLOCK_SIZE;
-            canvas.height = BLOCK_SIZE;
-            
-            container.style.width = '100%';
-            container.style.height = '600px';
+            resizeCanvas();
 
-            // Event listeners pour déplacement
             canvas.addEventListener('mousedown', startDrag);
             canvas.addEventListener('mousemove', drag);
             canvas.addEventListener('mouseup', endDrag);
             canvas.addEventListener('mouseleave', endDrag);
 
-            // Touch events pour mobile
             canvas.addEventListener('touchstart', handleTouchStart);
             canvas.addEventListener('touchmove', handleTouchMove);
             canvas.addEventListener('touchend', endDrag);
 
-            // Slider events
             document.getElementById('layerSlider').addEventListener('input', (e) => {
                 currentLayer = parseInt(e.target.value);
                 document.getElementById('layerValue').textContent = currentLayer;
@@ -398,8 +408,15 @@
             document.getElementById('zoomSlider').addEventListener('input', (e) => {
                 zoom = parseFloat(e.target.value);
                 document.getElementById('zoomValue').textContent = zoom.toFixed(1) + 'x';
+                resizeCanvas();
                 renderLayer();
             });
+        }
+
+        function resizeCanvas() {
+            const scaledBlockSize = BLOCK_SIZE * zoom;
+            canvas.width = worldSizeX * scaledBlockSize;
+            canvas.height = worldSizeY * scaledBlockSize;
         }
 
         function startDrag(e) {
@@ -416,7 +433,8 @@
             offsetY += dy;
             lastX = e.clientX;
             lastY = e.clientY;
-            renderLayer();
+            
+            canvas.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
         }
 
         function endDrag() {
@@ -440,7 +458,8 @@
             offsetY += dy;
             lastX = e.touches[0].clientX;
             lastY = e.touches[0].clientY;
-            renderLayer();
+            
+            canvas.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
         }
 
         function renderLayer() {
@@ -448,28 +467,27 @@
             
             const scaledBlockSize = BLOCK_SIZE * zoom;
             
-            for (let x = 0; x < worldSizeX; x++) {
-                const key = `${x},${currentLayer}`;
-                const block = world[key] || 'Stone';
-                
-                const drawX = x * scaledBlockSize + offsetX;
-                const drawY = offsetY;
-                
-                if (drawX + scaledBlockSize < 0 || drawX > canvas.width) continue;
-                
-                const texture = textures[block];
-                if (texture && texture.complete) {
-                    ctx.drawImage(texture, drawX, drawY, scaledBlockSize, scaledBlockSize);
-                } else {
-                    // Fallback couleur
-                    if (block === 'Bedrock') {
-                        ctx.fillStyle = '#1a1a1a';
-                    } else if (block === 'Stone') {
-                        ctx.fillStyle = '#808080';
+            for (let y = -100; y <= 40; y++) {
+                for (let x = 0; x < worldSizeX; x++) {
+                    const key = `${x},${y}`;
+                    const block = world[key] || 'Stone';
+                    
+                    const drawX = x * scaledBlockSize;
+                    const drawY = (y + 100) * scaledBlockSize;
+                    
+                    const texture = textures[block];
+                    if (texture && texture.complete) {
+                        ctx.drawImage(texture, drawX, drawY, scaledBlockSize, scaledBlockSize);
                     } else {
-                        ctx.fillStyle = ORE_CONFIG[block]?.color || '#888';
+                        if (block === 'Bedrock') {
+                            ctx.fillStyle = '#1a1a1a';
+                        } else if (block === 'Stone') {
+                            ctx.fillStyle = '#808080';
+                        } else {
+                            ctx.fillStyle = ORE_CONFIG[block]?.color || '#888';
+                        }
+                        ctx.fillRect(drawX, drawY, scaledBlockSize, scaledBlockSize);
                     }
-                    ctx.fillRect(drawX, drawY, scaledBlockSize, scaledBlockSize);
                 }
             }
         }
@@ -494,7 +512,7 @@
             document.getElementById('setup').style.display = 'block';
             offsetX = 0;
             offsetY = 0;
-            zoom = 1;
+            zoom = 2;
             currentLayer = 0;
         }
     </script>
