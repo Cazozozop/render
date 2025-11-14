@@ -1,1 +1,502 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Monde Minecraft</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        #viewer {
+            display: none;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 95vw;
+            margin-top: 20px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin-top: 5px;
+        }
+        #canvas-container {
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #333;
+            background: #1a1a1a;
+            cursor: grab;
+            touch-action: none;
+        }
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .stats h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .ore-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .ore-stat:last-child {
+            border-bottom: none;
+        }
+        .back-button {
+            margin-top: 15px;
+            background: #666;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="setup" class="container">
+        <h1>🌍 Générateur de Monde</h1>
+        <div class="input-group">
+            <label for="chunksX">Nombre de chunks (X):</label>
+            <input type="number" id="chunksX" min="1" max="50" value="10">
+            <small style="color: #888;">1 chunk = 32 blocs</small>
+        </div>
+        <button onclick="generateWorld()">Générer le monde</button>
+    </div>
 
+    <div class="loading" id="loading">
+        <h2>Génération en cours...</h2>
+        <p>Veuillez patienter...</p>
+    </div>
+
+    <div id="viewer">
+        <h2>Visualiseur de Monde</h2>
+        <div class="controls">
+            <div class="control-group">
+                <label for="layerSlider">Couche Y: <span id="layerValue">0</span></label>
+                <input type="range" id="layerSlider" min="-100" max="40" value="0" step="1">
+            </div>
+            <div class="control-group">
+                <label for="zoomSlider">Zoom: <span id="zoomValue">1.0x</span></label>
+                <input type="range" id="zoomSlider" min="0.5" max="4" value="1" step="0.1">
+            </div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="worldCanvas"></canvas>
+        </div>
+        <div class="stats">
+            <h3>📊 Rapport des minerais</h3>
+            <div id="oreStats"></div>
+        </div>
+        <button class="back-button" onclick="resetView()">Retour</button>
+    </div>
+
+    <script>
+        const BLOCK_SIZE = 16;
+        const ORE_CONFIG = {
+            "Moonstone Ore": {
+                radius: 2,
+                minDistBetweenDeposits: 40,
+                minY: -85,
+                maxY: -85,
+                spawnChance: 0.5,
+                color: '#9b59b6'
+            },
+            "Diamond Ore": {
+                radius: 2,
+                minDistBetweenDeposits: 13,
+                minY: -100,
+                maxY: -85,
+                spawnChance: 0.28,
+                color: '#3498db'
+            },
+            "Gold Ore": {
+                radius: 2,
+                minDistBetweenDeposits: 10,
+                minY: -100,
+                maxY: -75,
+                spawnChance: 0.4,
+                color: '#f1c40f'
+            },
+            "Iron Ore": {
+                radius: 2,
+                minDistBetweenDeposits: 5,
+                minY: -80,
+                maxY: 15,
+                spawnChance: 0.5,
+                color: '#95a5a6'
+            },
+            "Coal Ore": {
+                radius: 3,
+                minDistBetweenDeposits: 4,
+                minY: -60,
+                maxY: 40,
+                spawnChance: 0.5,
+                color: '#2c3e50'
+            }
+        };
+
+        let world = {};
+        let worldSizeX = 0;
+        let worldSizeY = 141;
+        let canvas, ctx;
+        let currentLayer = 0;
+        let zoom = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        let oreCount = {};
+        let textures = {};
+
+        function loadTextures() {
+            return new Promise((resolve) => {
+                let loaded = 0;
+                const total = Object.keys(ORE_CONFIG).length + 2;
+                
+                const checkComplete = () => {
+                    loaded++;
+                    if (loaded === total) resolve();
+                };
+
+                // Charger les textures de minerais
+                for (let oreName in ORE_CONFIG) {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    const textureName = oreName.replace(' ', '%20');
+                    img.src = `https://raw.githubusercontent.com/Cazozozop/render/main/${textureName}_1080x1080.png`;
+                    img.onload = checkComplete;
+                    img.onerror = () => {
+                        console.warn(`Texture non trouvée pour ${oreName}`);
+                        checkComplete();
+                    };
+                    textures[oreName] = img;
+                }
+
+                // Texture pierre
+                const stone = new Image();
+                stone.crossOrigin = "anonymous";
+                stone.src = "https://raw.githubusercontent.com/Cazozozop/render/main/Stone_1080x1080.png";
+                stone.onload = checkComplete;
+                stone.onerror = checkComplete;
+                textures['Stone'] = stone;
+
+                // Texture bedrock
+                const bedrock = new Image();
+                bedrock.crossOrigin = "anonymous";
+                bedrock.src = "https://raw.githubusercontent.com/Cazozozop/render/main/Bedrock_1080x1080.png";
+                bedrock.onload = checkComplete;
+                bedrock.onerror = checkComplete;
+                textures['Bedrock'] = bedrock;
+            });
+        }
+
+        async function generateWorld() {
+            const chunks = parseInt(document.getElementById('chunksX').value);
+            if (chunks < 1 || chunks > 50) {
+                alert('Veuillez entrer un nombre entre 1 et 50');
+                return;
+            }
+
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            await loadTextures();
+
+            worldSizeX = chunks * 32;
+            world = {};
+            oreCount = {};
+
+            for (let oreName in ORE_CONFIG) {
+                oreCount[oreName] = 0;
+            }
+
+            // Générer le monde
+            for (let y = -100; y <= 40; y++) {
+                for (let x = 0; x < worldSizeX; x++) {
+                    const key = `${x},${y}`;
+                    if (y === -100) {
+                        world[key] = 'Bedrock';
+                    } else {
+                        world[key] = 'Stone';
+                    }
+                }
+            }
+
+            // Générer les minerais
+            for (let oreName in ORE_CONFIG) {
+                const config = ORE_CONFIG[oreName];
+                generateOreDeposits(oreName, config);
+            }
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('viewer').style.display = 'block';
+
+            setupCanvas();
+            updateStats();
+            renderLayer();
+        }
+
+        function generateOreDeposits(oreName, config) {
+            const depositPoints = [];
+
+            for (let y = config.minY; y <= config.maxY; y++) {
+                for (let x = 0; x < worldSizeX; x += config.minDistBetweenDeposits) {
+                    if (Math.random() < config.spawnChance) {
+                        const offsetX = Math.floor(Math.random() * config.minDistBetweenDeposits);
+                        depositPoints.push({x: x + offsetX, y: y});
+                    }
+                }
+            }
+
+            // Placer les minerais autour de chaque point
+            depositPoints.forEach(point => {
+                for (let dy = -config.radius; dy <= config.radius; dy++) {
+                    for (let dx = -config.radius; dx <= config.radius; dx++) {
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist <= config.radius && Math.random() < 0.7) {
+                            const nx = point.x + dx;
+                            const ny = point.y + dy;
+                            const key = `${nx},${ny}`;
+                            if (world[key] === 'Stone' && nx >= 0 && nx < worldSizeX) {
+                                world[key] = oreName;
+                                oreCount[oreName]++;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function setupCanvas() {
+            canvas = document.getElementById('worldCanvas');
+            ctx = canvas.getContext('2d');
+            
+            const container = document.getElementById('canvas-container');
+            canvas.width = worldSizeX * BLOCK_SIZE;
+            canvas.height = BLOCK_SIZE;
+            
+            container.style.width = '100%';
+            container.style.height = '600px';
+
+            // Event listeners pour déplacement
+            canvas.addEventListener('mousedown', startDrag);
+            canvas.addEventListener('mousemove', drag);
+            canvas.addEventListener('mouseup', endDrag);
+            canvas.addEventListener('mouseleave', endDrag);
+
+            // Touch events pour mobile
+            canvas.addEventListener('touchstart', handleTouchStart);
+            canvas.addEventListener('touchmove', handleTouchMove);
+            canvas.addEventListener('touchend', endDrag);
+
+            // Slider events
+            document.getElementById('layerSlider').addEventListener('input', (e) => {
+                currentLayer = parseInt(e.target.value);
+                document.getElementById('layerValue').textContent = currentLayer;
+                renderLayer();
+            });
+
+            document.getElementById('zoomSlider').addEventListener('input', (e) => {
+                zoom = parseFloat(e.target.value);
+                document.getElementById('zoomValue').textContent = zoom.toFixed(1) + 'x';
+                renderLayer();
+            });
+        }
+
+        function startDrag(e) {
+            isDragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            offsetX += dx;
+            offsetY += dy;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            renderLayer();
+        }
+
+        function endDrag() {
+            isDragging = false;
+        }
+
+        function handleTouchStart(e) {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            }
+        }
+
+        function handleTouchMove(e) {
+            if (!isDragging || e.touches.length !== 1) return;
+            e.preventDefault();
+            const dx = e.touches[0].clientX - lastX;
+            const dy = e.touches[0].clientY - lastY;
+            offsetX += dx;
+            offsetY += dy;
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+            renderLayer();
+        }
+
+        function renderLayer() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const scaledBlockSize = BLOCK_SIZE * zoom;
+            
+            for (let x = 0; x < worldSizeX; x++) {
+                const key = `${x},${currentLayer}`;
+                const block = world[key] || 'Stone';
+                
+                const drawX = x * scaledBlockSize + offsetX;
+                const drawY = offsetY;
+                
+                if (drawX + scaledBlockSize < 0 || drawX > canvas.width) continue;
+                
+                const texture = textures[block];
+                if (texture && texture.complete) {
+                    ctx.drawImage(texture, drawX, drawY, scaledBlockSize, scaledBlockSize);
+                } else {
+                    // Fallback couleur
+                    if (block === 'Bedrock') {
+                        ctx.fillStyle = '#1a1a1a';
+                    } else if (block === 'Stone') {
+                        ctx.fillStyle = '#808080';
+                    } else {
+                        ctx.fillStyle = ORE_CONFIG[block]?.color || '#888';
+                    }
+                    ctx.fillRect(drawX, drawY, scaledBlockSize, scaledBlockSize);
+                }
+            }
+        }
+
+        function updateStats() {
+            const statsDiv = document.getElementById('oreStats');
+            statsDiv.innerHTML = '';
+            
+            for (let oreName in oreCount) {
+                const statDiv = document.createElement('div');
+                statDiv.className = 'ore-stat';
+                statDiv.innerHTML = `
+                    <span><strong>${oreName}:</strong></span>
+                    <span>${oreCount[oreName]} blocs</span>
+                `;
+                statsDiv.appendChild(statDiv);
+            }
+        }
+
+        function resetView() {
+            document.getElementById('viewer').style.display = 'none';
+            document.getElementById('setup').style.display = 'block';
+            offsetX = 0;
+            offsetY = 0;
+            zoom = 1;
+            currentLayer = 0;
+        }
+    </script>
+</body>
+</html>
