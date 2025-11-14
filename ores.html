@@ -208,44 +208,39 @@
                 minDistBetweenDeposits: 40,
                 minY: -85,
                 maxY: -85,
-                spawnChance: 0.5,
-                color: '#9b59b6'
+                spawnChance: 0.5
             },
             "Diamond Ore": {
                 radius: 2,
                 minDistBetweenDeposits: 13,
                 minY: -100,
                 maxY: -85,
-                spawnChance: 0.28,
-                color: '#3498db'
+                spawnChance: 0.28
             },
             "Gold Ore": {
                 radius: 2,
                 minDistBetweenDeposits: 10,
                 minY: -100,
                 maxY: -75,
-                spawnChance: 0.4,
-                color: '#f1c40f'
+                spawnChance: 0.4
             },
             "Iron Ore": {
                 radius: 2,
                 minDistBetweenDeposits: 5,
                 minY: -80,
                 maxY: 15,
-                spawnChance: 0.5,
-                color: '#95a5a6'
+                spawnChance: 0.5
             },
             "Coal Ore": {
                 radius: 3,
                 minDistBetweenDeposits: 4,
                 minY: -60,
                 maxY: 40,
-                spawnChance: 0.5,
-                color: '#2c3e50'
+                spawnChance: 0.5
             }
         };
 
-        // Générateur de nombres pseudo-aléatoires avec seed
+        // Générateur de nombres pseudo-aléatoires avec seed (similaire à Bloxd.io)
         class SeededRandom {
             constructor(seed) {
                 this.seed = seed;
@@ -268,7 +263,6 @@
         let lastY = 0;
         let oreCount = {};
         let textures = {};
-        let container;
         let currentSeed = "";
 
         function loadTextures() {
@@ -342,7 +336,7 @@
                 oreCount[oreName] = 0;
             }
 
-            // Générer le monde (inverser Y pour que bedrock soit en bas)
+            // Générer le monde
             for (let y = -100; y <= 40; y++) {
                 for (let x = 0; x < worldSizeX; x++) {
                     const key = `${x},${y}`;
@@ -354,7 +348,7 @@
                 }
             }
 
-            // Générer les minerais avec la seed
+            // Générer les minerais avec la seed (inspiré du code Bloxd.io)
             for (let oreName in ORE_CONFIG) {
                 const config = ORE_CONFIG[oreName];
                 generateOreDeposits(oreName, config);
@@ -371,46 +365,48 @@
         function generateOreDeposits(oreName, config) {
             const seedValue = hashSeed(currentSeed + oreName);
             const rng = new SeededRandom(seedValue);
-            const placedDeposits = [];
-
-            // Générer des points de dépôt
+            
+            // Parcourir la grille avec espacement (comme dans le code Bloxd.io)
             for (let y = config.minY; y <= config.maxY; y++) {
                 for (let x = 0; x < worldSizeX; x += config.minDistBetweenDeposits) {
-                    const offset = Math.floor(rng.next() * config.minDistBetweenDeposits);
-                    const depositX = x + offset;
+                    // Ajouter un offset aléatoire
+                    const cellCenterMaxOffset = 20;
+                    const offsetX = Math.floor(rng.next() * cellCenterMaxOffset * 2 - cellCenterMaxOffset);
+                    const offsetY = Math.floor(rng.next() * cellCenterMaxOffset * 2 - cellCenterMaxOffset);
                     
-                    if (depositX >= worldSizeX) continue;
-
-                    let tooClose = false;
-                    for (let deposit of placedDeposits) {
-                        const dist = Math.sqrt(Math.pow(deposit.x - depositX, 2) + Math.pow(deposit.y - y, 2));
-                        if (dist < config.minDistBetweenDeposits) {
-                            tooClose = true;
-                            break;
-                        }
-                    }
-
-                    if (!tooClose && rng.next() < config.spawnChance) {
-                        placedDeposits.push({x: depositX, y: y});
-                        placeOreVein(oreName, depositX, y, config.radius, rng);
+                    const depositX = x + offsetX;
+                    const depositY = y + offsetY;
+                    
+                    if (depositX < 0 || depositX >= worldSizeX) continue;
+                    if (depositY < config.minY || depositY > config.maxY) continue;
+                    
+                    // Vérifier le spawnChance
+                    if (rng.next() < config.spawnChance) {
+                        placeOreVein(oreName, depositX, depositY, config.radius, rng);
                     }
                 }
             }
         }
 
         function placeOreVein(oreName, centerX, centerY, radius, rng) {
+            // Placer les minerais dans un rayon
             for (let dy = -radius; dy <= radius; dy++) {
                 for (let dx = -radius; dx <= radius; dx++) {
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist <= radius && rng.next() < config.spawnChance) {
-                        const nx = centerX + dx;
-                        const ny = centerY + dy;
-                        const key = `${nx},${ny}`;
-                        
-                        if (world[key] === 'Stone' && nx >= 0 && nx < worldSizeX) {
-                            world[key] = oreName;
-                            oreCount[oreName]++;
-                        }
+                    
+                    // Vérifier si dans le rayon
+                    if (dist > radius) continue;
+                    
+                    // Chance de placer le bloc (comme dans Bloxd.io)
+                    if (rng.next() >= ORE_CONFIG[oreName].spawnChance) continue;
+                    
+                    const nx = centerX + dx;
+                    const ny = centerY + dy;
+                    const key = `${nx},${ny}`;
+                    
+                    if (world[key] === 'Stone' && nx >= 0 && nx < worldSizeX) {
+                        world[key] = oreName;
+                        oreCount[oreName]++;
                     }
                 }
             }
@@ -419,7 +415,6 @@
         function setupCanvas() {
             canvas = document.getElementById('worldCanvas');
             ctx = canvas.getContext('2d');
-            container = document.getElementById('canvas-container');
             
             resizeCanvas();
 
@@ -506,15 +501,6 @@
                     const texture = textures[block];
                     if (texture && texture.complete) {
                         ctx.drawImage(texture, drawX, drawY, scaledBlockSize, scaledBlockSize);
-                    } else {
-                        if (block === 'Bedrock') {
-                            ctx.fillStyle = '#1a1a1a';
-                        } else if (block === 'Stone') {
-                            ctx.fillStyle = '#808080';
-                        } else {
-                            ctx.fillStyle = ORE_CONFIG[block]?.color || '#888';
-                        }
-                        ctx.fillRect(drawX, drawY, scaledBlockSize, scaledBlockSize);
                     }
                 }
             }
